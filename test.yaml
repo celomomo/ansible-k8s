@@ -1,0 +1,9 @@
+---
+- hosts: localhost
+  become: true
+  tasks:
+  - name: Create directory for kube config
+    file:
+      path: $HOME/.kube
+      state: directory
+

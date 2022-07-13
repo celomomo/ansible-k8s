@@ -1,0 +1,143 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: Update apt package source list
+    notify: 
+    - Update APT
+
+  - name: Install necessary package
+    apt:
+      name:
+      - apt-transport-https
+      - curl
+      state: present
+
+  - name: Add Docker signing key
+    apt-key: 
+      url: https://download.docker.com/linux/ubuntu/gpg
+      state: present
+
+  - name: Get Ubuntu release version:
+    shell: lsb_release -cs
+    register: ubuntu_version
+
+  - name: Get OS architecture
+    shell: dpkg --print-architecture
+    register: os_architecture
+
+  - name: Add Docker repository
+    apt_repository:
+      repo: "deb [arch={{ os_architecture.stdout  }}] https://download.docker.com/linux/ubuntu {{ ubuntu_version.stdout }} stable"
+      state: present
+      filename: docker.list
+    notify:
+    - Update APT
+
+  - name: Install Docker package
+    apt:
+      name: docker.io
+      state: present
+
+  - name: Create docker directory
+    file:
+      path: "{{ /etc/docker  }}"
+      state: directory
+
+  - name: Update cgroupdriver in docker daemon
+    shell: |
+      cat <<EOF | sudo tee /etc/docker/daemon.json
+      { "exec-opts": ["native.cgroupdriver=systemd"],
+      "log-driver": "json-file",
+      "log-opts":
+      { "max-size": "100m" },
+      "storage-driver": "overlay2"
+      }
+      EOF
+
+  - name: Restart and enable Docker on system boot-up:
+    systemd:
+      name: docker
+      state: restarted
+      enabled: yes
+      daemon-reload: yes
+
+  - name: Add current user to docker group
+    user:
+      name: "{{ ansible_user  }}"
+      groups: docker
+      append: yes
+
+  - name: Disabling Swap Memory
+    shell: swapoff -a
+
+  - name: Ensure remove swap line in /etc/fstab
+    lineinfile:
+      dest: /etc/fstab
+      regexp: swap
+      state: absent
+
+  - name: Ensure the br_netfilter module is loaded
+    modprobe:
+      name: br_netfilter
+      state: present
+
+  - name: Ensure net.bridge.bridge-nf-call-iptables is set 1
+    shell: |
+      sysctl net.bridge.bridge-nf-call-iptables=1
+
+  - name: Add the Kubernetes signing key
+    apt-key:
+      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+      state: present
+
+  - name: Add the Kubernetes repository:
+    apt_repository:
+      repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+      state: present
+      filename: kubernetes.list
+
+  - name: Install Kubernetes tools:
+    apt:
+      name:
+      - kubeadm
+      - kebelet
+      - kubectl
+      - kubenetes-cni
+      state: present
+
+  - name: Allow firewall for port 6443
+    ufw:
+      rule: allow
+      port: '6443'
+      proto: tcp
+
+  - name: Reset existing cluster
+    shell: kubeadm reset -f
+
+  - name: Remove .kube directory in user home directory
+    shell: rm -rf $HOME/.kube
+
+
+
+
+
+- hosts: masters
+  tasks:
+  - name: Init kubernetes cluster
+    shell: kubeadm init --pod-network-cidr=10.244.0.0/16
+
+  - name: Create directory for kube config
+    file:
+      path: $HOME/.kube
+      state: directory
+
+  - name: Copy /etc/kubernetes/admin.conf to user home kube config
+    
+  - name: Deploy the pod network
+  - name: Print kubernetes join command
+  - name: Copy join command to local
+
+- hosts: workers
+  tasks:
+  - name: Copy join command to workers
