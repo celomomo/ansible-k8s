@@ -142,12 +142,6 @@
       group: "{{ ansible_user  }}"
       mode: '0644'
 
-  - name: Deploy the pod network
-    become_user: "{{ ansible_user  }}"
-    shell: |
-      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/k8s-manifests/kube-flannel-rbac.yml
-
   - name: Print kubernetes join command
     shell: kubeadm token create --print-join-command
     register: kubernetes_join_command
@@ -166,3 +160,12 @@
 
   - name: Execute worker join command
     shell: sh /tmp/kubernetes_join_command
+
+- hosts: masters
+  become: true
+  - name: Deploy the pod network
+    become_user: "{{ ansible_user  }}"
+    shell: |
+      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/k8s-manifests/kube-flannel-rbac.yml
+
