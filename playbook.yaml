@@ -1,24 +1,18 @@
 ---
-- hosts: all
+- hosts: masters, workers
   become: true
   tasks:
-  - name: Update apt package source list
-    notify: 
-    - Update APT
-
-  - name: Install necessary package
-    apt:
-      name:
-      - apt-transport-https
-      - curl
-      state: present
-
-  - name: Add Docker signing key
-    apt-key: 
+  - name: Add the Docker signing key
+    apt_key: 
       url: https://download.docker.com/linux/ubuntu/gpg
       state: present
 
-  - name: Get Ubuntu release version:
+  - name: Add the Kubernetes signing key
+    apt_key:
+      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+      state: present
+
+  - name: Get Ubuntu release version
     shell: lsb_release -cs
     register: ubuntu_version
 
@@ -31,17 +25,42 @@
       repo: "deb [arch={{ os_architecture.stdout  }}] https://download.docker.com/linux/ubuntu {{ ubuntu_version.stdout }} stable"
       state: present
       filename: docker.list
-    notify:
-    - Update APT
+
+  - name: Add the Kubernetes repository
+    apt_repository:
+      repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+      state: present
+      filename: kubernetes.list
+
+  - name: Install necessary package
+    apt:
+      name:
+      - apt-transport-https
+      - curl
+      state: present
+      update_cache: yes
 
   - name: Install Docker package
     apt:
-      name: docker.io
+      name: 
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
       state: present
+
+  - name: Install Kubernetes tools
+    apt:
+      name:
+      - kubeadm
+      - kubelet
+      - kubectl
+      - kubernetes-cni
+      state: present
+
 
   - name: Create docker directory
     file:
-      path: "{{ /etc/docker  }}"
+      path:  /etc/docker
       state: directory
 
   - name: Update cgroupdriver in docker daemon
@@ -55,7 +74,7 @@
       }
       EOF
 
-  - name: Restart and enable Docker on system boot-up:
+  - name: Restart and enable Docker on system boot-up
     systemd:
       name: docker
       state: restarted
@@ -86,58 +105,67 @@
     shell: |
       sysctl net.bridge.bridge-nf-call-iptables=1
 
-  - name: Add the Kubernetes signing key
-    apt-key:
-      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-      state: present
-
-  - name: Add the Kubernetes repository:
-    apt_repository:
-      repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
-      state: present
-      filename: kubernetes.list
-
-  - name: Install Kubernetes tools:
-    apt:
-      name:
-      - kubeadm
-      - kebelet
-      - kubectl
-      - kubenetes-cni
-      state: present
-
   - name: Allow firewall for port 6443
+    ufw:
+      rule: allow
+      port: '6443'
+
+  - name: Allow firewall for port 6443/TCP
     ufw:
       rule: allow
       port: '6443'
       proto: tcp
 
+
   - name: Reset existing cluster
     shell: kubeadm reset -f
 
   - name: Remove .kube directory in user home directory
+    become_user: "{{ ansible_user  }}"
     shell: rm -rf $HOME/.kube
 
-
-
-
-
 - hosts: masters
+  become: true
   tasks:
   - name: Init kubernetes cluster
     shell: kubeadm init --pod-network-cidr=10.244.0.0/16
 
   - name: Create directory for kube config
+    become_user: "{{ ansible_user  }}"
     file:
       path: $HOME/.kube
       state: directory
 
   - name: Copy /etc/kubernetes/admin.conf to user home kube config
-    
+    copy:
+      src: /etc/kubernetes/admin.conf
+      dest: /home/{{ ansible_user }}/.kube/config
+      remote_src: yes
+      owner: "{{ ansible_user  }}"
+      group: "{{ ansible_user  }}"
+      mode: '0644'
+
   - name: Deploy the pod network
+    become_user: "{{ ansible_user  }}"
+    shell: |
+      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/k8s-manifests/kube-flannel-rbac.yml
+
   - name: Print kubernetes join command
-  - name: Copy join command to local
+    shell: kubeadm token create --print-join-command
+    register: kubernetes_join_command
+
+  - name: Copy join command to file in local
+    local_action: copy content="{{ kubernetes_join_command.stdout_lines[0] }}" dest="/tmp/kubernetes_join_command"
 
 - hosts: workers
+  become: true
   tasks:
   - name: Copy join command to workers
+    copy:
+      src: /tmp/kubernetes_join_command
+      dest: /tmp/kubernetes_join_command
+      mode: '0777'
+
+  - name: Execute worker join command
+    shell: sh /tmp/kubernetes_join_command

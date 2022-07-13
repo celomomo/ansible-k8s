@@ -1,9 +1,12 @@
 ---
-- hosts: localhost
+- hosts: worker
   become: true
+  #gather_facts: false
   tasks:
-  - name: Create directory for kube config
-    file:
-      path: $HOME/.kube
-      state: directory
+  - name: Copy /etc/kubernetes/admin.conf to user home kube config
+    shell: cat /etc/hostname
+    register: kube_hostname
 
+  - name: copy command
+    copy:
+    shell: cat kube_hostname.stdout_lines > /tmp/kube_join

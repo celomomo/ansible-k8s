@@ -1,2 +1,12 @@
-[localhost]
-127.0.0.1
+[masters]
+192.168.112.110
+[masters:vars]
+ansible_become_pass=123
+ansible_user=quangvt
+
+[workers]
+192.168.112.111
+192.168.112.112
+[workers:vars]
+ansible_become_pass=123
+ansible_user=quangvt
