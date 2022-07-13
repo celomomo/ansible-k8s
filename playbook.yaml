@@ -2,10 +2,10 @@
 - hosts: masters, workers
   become: true
   tasks:
-  - name: Add the Docker signing key
-    apt_key: 
-      url: https://download.docker.com/linux/ubuntu/gpg
-      state: present
+#  - name: Add the Docker signing key
+#    apt_key: 
+#      url: https://download.docker.com/linux/ubuntu/gpg
+#      state: present
 
   - name: Add the Kubernetes signing key
     apt_key:
@@ -42,10 +42,7 @@
 
   - name: Install Docker package
     apt:
-      name: 
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
+      name: docker.io
       state: present
 
   - name: Install Kubernetes tools
