@@ -2,10 +2,10 @@
 - hosts: masters, workers
   become: true
   tasks:
-#  - name: Add the Docker signing key
-#    apt_key: 
-#      url: https://download.docker.com/linux/ubuntu/gpg
-#      state: present
+  - name: Add the Docker signing key
+    apt_key: 
+      url: https://download.docker.com/linux/ubuntu/gpg
+      state: present
 
   - name: Add the Kubernetes signing key
     apt_key:
@@ -57,7 +57,7 @@
 
   - name: Create docker directory
     file:
-      path:  /etc/docker
+      path: /etc/docker
       state: directory
 
   - name: Update cgroupdriver in docker daemon
@@ -102,17 +102,11 @@
     shell: |
       sysctl net.bridge.bridge-nf-call-iptables=1
 
-  - name: Allow firewall for port 6443
-    ufw:
-      rule: allow
-      port: '6443'
-
-  - name: Allow firewall for port 6443/TCP
-    ufw:
-      rule: allow
-      port: '6443'
-      proto: tcp
-
+  - name: Disable firewall
+    service:
+      name: ufw
+      state: stopped
+      enabled: no
 
   - name: Reset existing cluster
     shell: kubeadm reset -f
@@ -147,7 +141,14 @@
     register: kubernetes_join_command
 
   - name: Copy join command to file in local
+    become: false
     local_action: copy content="{{ kubernetes_join_command.stdout_lines[0] }}" dest="/tmp/kubernetes_join_command"
+
+  - name: Deploy the pod network
+    become_user: "{{ ansible_user  }}"
+    shell: |
+      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/k8s-manifests/kube-flannel-rbac.yml
 
 - hosts: workers
   become: true
@@ -160,12 +161,4 @@
 
   - name: Execute worker join command
     shell: sh /tmp/kubernetes_join_command
-
-- hosts: masters
-  become: true
-  - name: Deploy the pod network
-    become_user: "{{ ansible_user  }}"
-    shell: |
-      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-      kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/k8s-manifests/kube-flannel-rbac.yml
 
